@@ -1,0 +1,232 @@
+---
+title: "Insurance Project Documentation"
+author: "St.John"
+date: "2024-06-27"
+output: 
+  html_document: 
+    toc: true
+    toc_depth: 6
+    highlight: espresso
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(caret)
+library(broom)
+library(rmarkdown)
+library(skimr)
+library(SmartEDA)
+```
+
+
+## Data Preparation
+
+Imported the dataset into Excel from CSV converting it to an Excel file,
+after which data was initially explored in Excel, after which it was imported into
+Rstudio for analysis and visualization 
+
+#### **Packages Used in this stage**
+
+* `library(readxl)`: Used to Import Excel file into RStudio.
+
+#### **Code Implementation**
+```{r warning=FALSE, message=FALSE}
+insurance_data <- read_excel("insurance_dataset.xlsx")
+```
+
+
+## Data Preprocessing 
+
+#### **Packages Used in this stage**
+
+* `library(lubridate)`: Used to manipulate and work with date data type.
+* `library(tidyverse)`: used the `dplyr` and `ggplot` sub packages  for manipulation and visuals.
+
+### Feature Engeinerring 
+Certain new variables were created out of existing one for the purpose of analysis 
+and visualization, the `mutate` and `ifelse` functions was used at this stage to achieve this.
+
+1. Calculate Age and Group it 
+```{r message=FALSE, warning=FALSE}
+# Extract the Current year and month
+current_year <- 2024
+current_month <- 6
+
+# Extract the Birth year and month for policyholders
+insurance_data$birth_year <- year(insurance_data$birthdate)
+insurance_data$birth_month <- month(insurance_data$birthdate) 
+
+# calculate the age 
+insurance_data <- insurance_data %>%
+  mutate(
+     age = ifelse(birth_month > current_month, current_year - birth_year - 1, current_year - birth_year)
+  )
+
+# to group this ages into interval for the aim of exploration 
+age_breaks <- c(21, 31, 41, 51, 61, 71, 75)
+age_lables <- c("21-30", "31-40", "41-50", "51-60", "61-70", "71-74")
+
+insurance_data <- insurance_data %>%
+  mutate(
+    age_group = cut(age, breaks = age_breaks, labels = age_lables, right = FALSE)
+  )
+```
+
+2. To Encode Categorical Variables into Numeric for Correlation Purpose
+```{r message=FALSE, warning=FALSE}
+# Encode the data to turn the character data type to numeric for correlation
+insurance_data_encoded <- insurance_data %>%
+  mutate(make_encoded = as.numeric(factor(car_make)),
+         model_encoded = as.numeric(factor(car_model)),
+         color_encoded = as.numeric(factor(car_color)))
+```
+
+3. Defining Risk profiles(high and low), claim status (frequent(high) and infrequent(low)), 
+high household income, and estimated premium based on `claim_freq`, `claim_amount` and `household_income`.
+```{r}
+#Define risk profile of policyholders based on claim frequency and claim amount
+ insurance_data <- insurance_data %>%
+   mutate(risk_profile = ifelse(claim_freq >= 2 | claim_amt > 75000, "High", "Low"))
+ 
+# Convert risk_profile to a binary variable for logistic regression
+ insurance_data <- insurance_data %>%
+   mutate(high_risk = ifelse(risk_profile == "High", 1, 0))
+
+# Define a threshold for what frequent claim is 
+insurance_data <- insurance_data %>%
+  mutate(claim_freq_status = ifelse(claim_freq >= 2, "Frequent", "Infrequent"))
+
+# Convert claim_freq to a binary variable for logistic regression
+insurance_data <- insurance_data %>%
+  mutate(frequent_claimer = ifelse(claim_freq_status == "Frequent", 1, 0))
+
+# Define what Low Claim Frequency and High House Hold income is 
+insurance_data <- insurance_data %>%
+  mutate(low_claim_high_income = ifelse(claim_freq < 2 
+                                        & household_income > 198000,"Yes", "No"))
+
+# Convert low_claim_high_income to a binary variable for logistic regression
+insurance_data <- insurance_data %>%
+  mutate(highi_lowc = ifelse(low_claim_high_income == "Yes", 1, 0))
+
+
+# Estimate premiums based on claim amounts and frequency 
+insurance_data <- insurance_data %>%
+    mutate(estimated_premium = 0.1 * claim_amt + 100 * claim_freq)
+```
+
+### Assumption Used at this Stage 
+For defining the risk profiles, claim status, and low claim frequency and high household income based on **claim_frequency**, **claim_amount**, and **household_income** was not done based on judgement but rather using certain descriptive statistics techniques such as 
+**mean**, **standard deviation**, **max and min** and **quartile**  to determine what should be appropriate for this. For the premiums it was estimated based on a certain % of what splendor insurance will charge based on the claim amount and also a fixed amount of the claim_freq as certain policy holders who claim more will be high risk policyholders that status of their risk will have to be adjusted for same for low risk policy holders when calculating premium.
+
+## Method of Analysis 
+Certain methods were used to extract insights out of the dataset
+
+#### **Packages Used in this stage**
+
+* `library(tidyverse)`: used the `dplyr` and `ggplot` sub packages  for manipulation and visuals.
+* `library(caret)`: used for regression analysis.
+* `library(SmartEDA)`: used for Automated EDA.
+* `library(Skimr)`: used as well for quick EDA and check for missing values.
+
+
+#### EDA
+An automated EDA was done to explore the dataset 
+and understand frequency distribution, datatype attributes, relationships,
+missing value check and lot more.
+```{r message=FALSE, warning=FALSE}
+#  Automated Data Exploration 
+#Exp Report(insurance_data,op_file = "EDA_report.html")
+skim_without_charts(insurance_data)
+```
+
+#### Visuals and Aggregate Functions 
+This were used to explore the data for pattern and trends among the various categorical variables and numeric variables. The function used were `ggplot` for visuals `summarise` for applying an aggregation such as 
+`sum` and `mean` for a numeric variable `group_by` to group by a categorical variable `filter` to narrow out observations not needed. This technique was applied across every question that the project to sort to provide answer too.
+below is a code sample
+```{r warning=FALSE, message=TRUE}
+# common characteristics among policyholders who make frequent claims?
+# Gender
+insurance_data %>%
+  group_by(claim_freq_status, gender) %>% 
+  filter(claim_freq_status == "Frequent") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=claim_freq_status, y=Count, fill = gender)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distrubtion of PolicyHolders that Claim Frequently based on Gender",
+       x="Frequent Claimers",
+       y="Value") +
+  theme_minimal()
+
+# key characteristics of policyholders with low claim frequencies and high household incomes
+insurance_data %>%
+  group_by(low_claim_high_income, marital_status) %>% 
+  filter(low_claim_high_income == "Yes") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=low_claim_high_income, y=Count, fill = marital_status)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distribution of Policyholders with Low Claim Frequency and 
+       High Household Income based on Marital Status",
+       x="Low Claim & High Income",
+       y="Value") +
+  theme_minimal()
+```
+
+#### Logistic Regression
+Was used to provide insights for certain questions
+this included the **Risk Assessment** and **Customer Segmentation** questions
+below is a code sample 
+```{r warning=FALSE,message=TRUE}
+# A. factors that are most indicative of high-risk policyholders
+
+# Using Logistic Regression for other features
+#logistic_model_1 <- glm(high_risk ~ household_income + education + kids_driving_ch + parent, data = insurance_data, family = binomial)
+
+# Based on Car features
+#logistic_model_2 <- glm(high_risk ~ car_use + car_make + car_model + car_color , data = insurance_data, family = binomial) 
+ 
+ # Based on Demographics
+ logistic_model_3 <- glm(high_risk ~ age_group + gender + marital_status + 
+                           coverage_zone,
+                          data = insurance_data, family = binomial) 
+```
+
+#### Correlation
+This was to done to understand and provide insights into relationship that existed between variables to be exact the question on **Are there any specific vehicle characteristics (e.g., make, model, year) that correlate with higher claim frequencies or amounts?**
+```{r warning=FALSE, message=TRUE}
+# Select only the needed numeric variables out of the encoded data
+numeric_data <- insurance_data_encoded %>% 
+  select(claim_amt, claim_freq, car_year, make_encoded, model_encoded, color_encoded)
+# calcuate correlation among the variables
+cor(numeric_data)
+```
+
+
+## Challenges and Solutions 
+
+#### Challenges
+
+* **Data and Question Complexity**: The level of mainpulation needed to 
+get get insight  for each question was quite difficult.
+* **Interpreting logistic regression**: Being my first major time applying a machine learning techqiue, interpreating the results was quick hard.
+and contextual knowledge.
+* **Technical Issues with R Studio**: Frequent hangs and slowdowns in R Studio, 
+likely due to the extensive operations and code running simultaneously, 
+disrupted the smooth progress of analysis.
+* **Variable Selection Conflict**: Deciding on the most informative variables 
+for analysis and those that would best answer my research questions was a recurring dilemma.
+
+#### Solutions
+
+* **Efficient Data Handling**: Leveraged powerful R packages like dplyr and 
+tidyverse for effective data management.
+* **Leverage Online Resources**: Utilized online resources to get a better understanding and interpretation of Logistic Regression model.
+* **Technical Workarounds**: Implemented measures to mitigate technical issues,
+such as optimizing code for efficiency and breaking down analysis into smaller, 
+manageable segments.
+* **Iterative Variable Selection**: Adopted an iterative approach to variable 
+selection, continuously refining the choices based on the evolving understanding
+of the dataset and project objectives.

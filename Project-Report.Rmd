@@ -1,0 +1,677 @@
+---
+title: "Data-Driven Decisions: Enhancing Auto Insurance Services at Splendor Analytics"
+author: "St.John"
+date: "2024-06-28"
+output: 
+  html_document: 
+    toc_depth: 6
+    highlight: espresso
+    theme: cerulean
+    toc: true
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(outliers)
+library(lubridate)
+library(caret)
+library(broom)
+library(rmarkdown)
+library(skimr)
+library(SmartEDA)
+```
+
+```{r dataloading, include=FALSE}
+# Load the datasets
+insurance_data <- read_excel("insurance_dataset.xlsx")
+View(insurance_data)
+```
+
+```{r extract_age, include=FALSE}
+# Extract the Current year and month
+current_year <- 2024
+current_month <- 6
+
+# Extract the Birth year and month for policyholders
+insurance_data$birth_year <- year(insurance_data$birthdate)
+insurance_data$birth_month <- month(insurance_data$birthdate) 
+
+# calculate the age 
+insurance_data <- insurance_data %>%
+  mutate(
+     age = ifelse(birth_month > current_month, current_year - birth_year - 1, current_year - birth_year)
+  )
+
+# to group this ages into interval for the aim of exploration 
+age_breaks <- c(21, 31, 41, 51, 61, 71, 75)
+age_lables <- c("21-30", "31-40", "41-50", "51-60", "61-70", "71-74")
+
+insurance_data <- insurance_data %>%
+  mutate(
+    age_group = cut(age, breaks = age_breaks, labels = age_lables, right = FALSE)
+  )
+```
+
+```{r demographics, include=FALSE}
+demographic_summary <- insurance_data %>% group_by(age_group, gender, marital_status) %>%
+  summarise(
+    avg_claim_frequency = mean(claim_freq),
+    avg_claim_amount = mean(claim_amt)
+  ) %>%
+  gather(measures, values, c(avg_claim_frequency, avg_claim_amount))
+```
+
+```{r encode, include=FALSE}
+# Encode the data to turn the character data type to numeric for correlation
+insurance_data_encoded <- insurance_data %>%
+  mutate(make_encoded = as.numeric(factor(car_make)),
+         model_encoded = as.numeric(factor(car_model)),
+         color_encoded = as.numeric(factor(car_color)))
+# Select only the needed numeric variables out of the encoded data
+numeric_data <- insurance_data_encoded %>% 
+  select(claim_amt, claim_freq, car_year, make_encoded, model_encoded, color_encoded)
+```
+
+
+```{r fe, include=FALSE}
+# Define risk profile of policyholders based on claim frequency and claim amount
+ insurance_data <- insurance_data %>%
+   mutate(risk_profile = ifelse(claim_freq >= 2 | claim_amt > 75000, "High", "Low"))
+ 
+ # Convert risk_profile to a binary variable for logistic regression
+ insurance_data <- insurance_data %>%
+   mutate(high_risk = ifelse(risk_profile == "High", 1, 0))
+ 
+ # Define a threshold for what frequent claim is 
+insurance_data <- insurance_data %>%
+  mutate(claim_freq_status = ifelse(claim_freq >= 2, "Frequent", "Infrequent"))
+
+# Convert claim_freq to a binary variable for logistic regression
+insurance_data <- insurance_data %>%
+  mutate(frequent_claimer = ifelse(claim_freq_status == "Frequent", 1, 0))
+
+# Define what Low Claim Frequency and High House Hold income is 
+insurance_data <- insurance_data %>%
+  mutate(low_claim_high_income = ifelse(claim_freq < 2 
+                                        & household_income >= 198000,"Yes", "No"))
+
+# Convert low_claim_high_income to a binary variable for logistic regression
+insurance_data <- insurance_data %>%
+  mutate(highi_lowc = ifelse(low_claim_high_income == "Yes", 1, 0))
+
+# Estimate premiums based on claim amounts and frequency 
+insurance_data <- insurance_data %>%
+    mutate(estimated_premium = 0.1 * claim_amt + 100 * claim_freq)
+```
+
+
+
+
+## Introduction 
+
+The purpose of this project was to conduct a thorough evaluation of Splendor 
+Analytics Insurance's auto insurance division. In today's data-driven world, 
+making decisions based on data is crucial for developing informed business strategies. 
+This analysis focused on reviewing the insurance data, including policyholder 
+demographics, vehicle information, and claim histories, to identify important 
+patterns, areas for improvement, and potential opportunities for optimizing services.
+The analysis process for Splendor Analytics Insurance's data was framed around the 
+guiding questions. By performing detailed data analysis, visualizations, and deriving insights,
+the ultimate goal was to provide valuable guidance for optimizing the company's auto insurance operations and enhancing marketing strategies.
+
+## Methodology
+The methodology of this project follows a structured approach aimed at effectively analyzing the data and deriving actionable insights. Each phase contributes to achieving the project's objectives.
+
+1. **Tool Used**: The project employed a dual-tool approach, utilizing R for data manipulation, primary analysis, and visualization tasks. Excel complemented these efforts by providing a quick overview and facilitating data management through spreadsheets.
+
+2. **Data Preparation and Management**: Data was initially loaded into R using relevant packages for efficient manipulation and analysis. Simultaneously, Excel was used for storing and managing datasets, ensuring accessibility and ease of initial data exploration.
+
+3. **Data Preprocessing and Cleaning**: The dataset underwent thorough preprocessing to enhance its quality and utility. This included essential tasks such as feature engineering and encoding character datatype to numeric for correlation the  new variables created were age, risk profiles, claim status, and estimated premium. These transformations were crucial for preparing the data for subsequent analysis.
+
+4. **Techniques Applied for Analysis:**
+
+* **Descriptive Statistics**: Statistical summaries were employed to characterize the main features of the dataset, providing insights into its central tendencies and variability.
+
+* **Visualizations**: Various graphical representations were generated to visually explore patterns and relationships within the data, aiding in intuitive understanding and decision-making.
+
+* **Correlation Analysis**: Relationships between variables were analyzed to uncover dependencies and potential associations, guiding further investigation.
+
+* **Logistic Regression**: This technique was applied to model binary outcomes, such as predicting claim status or assessing risk profiles, leveraging the dataset's structured variables.
+
+
+## Findings and Insights 
+In this section the insights from analysis will be presented based on each key question that was asked.
+
+#### **Claim Frequency and Amount Analysis**
+
+* **What are the average claim frequencies and amounts for different  demographic groups**
+
+
+The analysis shows that average claim amounts remain consistent across age groups,  approximately $49,000 to $50,500, with younger (21-30) and older (71-74)drivers filing slightly more claims, with frequencies of 0.520 and 0.499,  respectively. Gender analysis indicates nearly identical claim amounts for  males and females, around $50,000, but females have a marginally higher  claim frequency (0.514) compared to males (0.506). Marital status reveals  that separated individuals exhibit the highest claim frequency at 0.534 with a  lower average claim amount ($49,259), whereas married policyholders,  with a frequency of 0.520 and the highest average claim amount ($50,338).
+
+```{r demovisual, echo=FALSE, message=FALSE, warning=FALSE}
+# Age_Group
+ggplot(data = demographic_summary, aes(x= age_group, y= values, fill = age_group))+
+  geom_col(position = "dodge", width = 0.4) +
+  labs(title = "Average Claim Amount & Claim Frequency based on Age Group",
+       x = "Age_Group",
+       y = "Value") +
+  facet_wrap(~ measures, scales = "free_y") +
+  theme_minimal()
+
+# Gender
+ggplot(data = demographic_summary, aes(x= gender, y= values, fill = gender))+
+  geom_col(position = "dodge", width = 0.4) +
+  labs(title = "Average Claim Amount & Claim Frequency based on Gender",
+       x = "Gender",
+       y = "Value") +
+  facet_wrap(~ measures, scales = "free_y") +
+  theme_minimal()
+
+# Martial Status
+ggplot(data = demographic_summary, aes(x= marital_status, y= values, fill = marital_status))+
+  geom_col(position = "dodge", width = 0.4) +
+  labs(title = "Average Claim Amount & Claim Frequency based for bassed on Marital Status",
+       x = "Marital Status",
+       y = "Value") +
+  facet_wrap(~ measures, scales = "free_y") +
+  theme_minimal()
+
+```
+
+* **Are there any specific vehicle characteristics (e.g., make, model, year) that correlate with higher claim frequencies or amounts**
+
+
+The correlation analysis indicates no significant relationships between vehicle characteristics (make, model, year, color) and both claim amounts and claim frequencies. The correlations between claim amount and vehicle characteristics such as car year (0.001), make (-0.007), model (-0.001), and color (-0.003) are negligible. Similarly, claim frequency shows minimal correlation with car year (0.004), make (0.003), model (0.002), and color (-0.007). These results suggest that vehicle characteristics do not significantly influence the frequency or amount of claims.
+
+```{r correlation, message=FALSE, warning=FALSE}
+cor(numeric_data)
+```
+
+
+
+
+#### **Risk Assessment**
+
+* **Which factors (e.g., household income, education level, coverage zone) are most indicative of high-risk policyholders?**
+
+
+Logistic regression is a statistical method used to model binary outcome variables, where the outcome is typically coded as 0 or 1 (e.g., low-risk vs. high-risk policyholders). The model estimates the probability that a given input (such as car model, household income, education level, etc.) will result in a particular outcome. The coefficients in a logistic regression model indicate the direction and strength of the relationship between each predictor variable and the outcome. The significance level (usually denoted as α) is the threshold for determining whether a predictor variable has a statistically significant effect on the outcome. A common significance level is 0.05, meaning there is a 5% chance that the observed relationship is due to random variation. If a p-value is less than or equal to the significance level, the predictor is considered statistically significant. Based on the regression results, the most indicative factors of high-risk policyholders include: Specific Car Models: Certain car models, such as **car_model5000S**, **car_model62**, **car_modelA6**, and **car_modelA8**, among others that meet the threshold, are significantly associated with higher risk. This suggests that policyholders driving these models are more likely to file frequent or high-value claims. The Age Group of **71-74** shows a significant association with higher risk as well policyholders with 3 children driving showed marginal significance, other features from Household Income, Education Level, Coverage Zone, Gender, and Marital Status showed no significance and are therefore not associated with higher risk status 
+
+
+* **Can we identify any common characteristics among policyholders who make frequent claims?**
+
+
+The analysis of frequent claimers shows that both genders are almost equally represented, with females (2233) and males (2194) making frequent claims. This indicates that gender does not significantly influence claim frequency. Car use analysis reveals that policyholders using their cars for private purposes (3572) are more likely to make frequent claims compared to those using cars for commercial purposes (855). Coverage zone data shows that the frequency of claims is relatively even across all zones: highly rural (846), highly urban (902), rural (902), suburban (917), and urban (860), indicating that the coverage zone does not significantly impact the likelihood of making frequent claims. Further analysis indicates that policyholders with no kids driving (3145) are the most frequent claimers, suggesting that having no kids driving is associated with a higher likelihood of making frequent claims. Additionally, single policyholders (1795) are the most frequent claimers, followed by married (1547), divorced (711), and separated (374) individuals, indicating that being single is a common characteristic among frequent claimers. From the logistic regression analysis, specific car makes show significant associations with frequent claims. Notably: **Cadillac (Estimate: 0.520798, p-value: 0.00254)**, **Geo (Estimate: 0.856936, p-value: 0.00182)**, **Hyundai (Estimate: 0.379066, p-value: 0.03253)**, **Nissan (Estimate: 0.322913, p-value: 0.04749)**, **Volkswagen (Estimate: 0.423598, p-value: 0.00804)**, **Merkur (Estimate: 1.837766, p-value: 0.04649)**.
+These car makes are significantly associated with higher risk, suggesting that policyholders driving these models are more likely to file frequent or high-value claims. For car color, Yellow has a significant association (Estimate: -0.23999, p-value: 0.0160), indicating a lower likelihood of frequent claims compared to the baseline.
+
+
+```{r fc, echo=FALSE, message=FALSE, warning=FALSE}
+# Gender
+insurance_data %>%
+  group_by(claim_freq_status, gender) %>% 
+  filter(claim_freq_status == "Frequent") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=claim_freq_status, y=Count, fill = gender)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distrubtion of PolicyHolders that Claim Frequently based on Gender",
+       x="Frequent Claimers",
+       y="Value") +
+  theme_minimal()
+
+# Marital Status
+insurance_data %>%
+  group_by(claim_freq_status, marital_status) %>% 
+  filter(claim_freq_status == "Frequent") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=claim_freq_status, y=Count, fill = marital_status)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distrubtion of PolicyHolders that Claim Frequently based on Mariral Status",
+       x="Frequent Claimers",
+       y="Value") +
+  theme_minimal()
+
+# Car Use
+insurance_data %>%
+  group_by(claim_freq_status, car_use) %>% 
+  filter(claim_freq_status == "Frequent") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=claim_freq_status, y=Count, fill = car_use)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distrubtion of PolicyHolders that Claim Frequently based on Car Use",
+       x="Frequent Claimers",
+       y="Value") +
+  theme_minimal()
+
+# Coverage Zone
+insurance_data %>%
+  group_by(claim_freq_status, coverage_zone) %>% 
+  filter(claim_freq_status == "Frequent") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=claim_freq_status, y=Count, fill = coverage_zone)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distrubtion of PolicyHolders that Claim Frequently based on Coverage Zone",
+       x="Frequent Claimers",
+       y="Value") +
+  theme_minimal()
+# Kids Driving
+insurance_data %>%
+  group_by(claim_freq_status, kids_driving_ch) %>% 
+  filter(claim_freq_status == "Frequent") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=claim_freq_status, y=Count, fill = kids_driving_ch)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distrubtion of PolicyHolders that Claim Frequently based on Kids_Driving",
+       x="Frequent Claimers",
+       y="Value") +
+  theme_minimal()
+
+```
+
+
+
+#### **Premium Optimization**
+
+* **How do current premium amounts relate to the risk profiles of policyholders?**
+
+
+The analysis shows a significant difference in the average estimated premium between high-risk and low-risk policyholders. High-risk policyholders have an average estimated premium of $7,562, while low-risk policyholders have a significantly lower average estimated premium of $3,774. Additionally, the total estimated premiums for high-risk and low-risk policyholders are $95,928,798 and $93,804,050, respectively. This suggests that high-risk policyholders not only pay more individually but also contribute a larger portion to the total premium pool.
+This disparity in premium amounts indicates that the current premium pricing model effectively distinguishes between different risk profiles, ensuring that higher-risk policyholders are charged higher premiums to mitigate potential losses from frequent claims.
+
+```{r premium, echo=FALSE, message=FALSE, warning=FALSE}
+insurance_data %>% group_by(risk_profile) %>%
+  summarise(total_estimated_premium = sum(estimated_premium),
+            avg_estimated_premmium = mean(estimated_premium)) %>%
+  pivot_longer(cols = -risk_profile, names_to = "measures", values_to = "values") %>%
+  ggplot(aes(x=risk_profile, y=values, fill = risk_profile)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Estimated Premium based on Risk Profile",
+       x="Risk Profile",
+       y="Value") +
+  facet_wrap(~ measures, scales = "free_y")+
+  theme_minimal()
+
+```
+
+
+
+
+* **Can we recommend adjustments to the premium pricing model to better reflect risk levels and improve profitability?**
+
+
+1. **Maintain Competitive Premiums for Low-Risk Policyholders**: To ensure high retention rates and attract more low-risk customers, keep the premiums competitive. Low-risk policyholders are less likely to file claims, so they contribute to profitability through consistent premium payments with fewer associated costs.
+2. **Enhance Differentiation for High-Risk Premiums**: Given the significant difference in premiums between high-risk and low-risk policyholders, consider further differentiating premiums within the high-risk category based on more granular risk factors. This can include driving behavior, specific vehicle models, or historical claim frequency.
+3.	**Incorporate More Predictive Factors**: Use additional predictive factors that have significant associations with high-risk profiles, such as certain car makes or models, to refine the premium pricing strategy. This approach can ensure that the premiums more accurately reflect the likelihood of future claims.
+4.	**Enhance Customer Segmentation**: Leverage data-driven insights to segment customers more effectively. Tailor premium adjustments and marketing strategies to different segments, ensuring that both high-risk and low-risk policyholders feel that their premiums are fair and justified.
+5.	**Periodic Review and Adjustment**: Regularly review and adjust the premiums based on updated risk assessments and emerging trends. This proactive approach will help maintain a balance between profitability and customer satisfaction.
+
+
+
+#### **Customer Segmentation and Marketing**
+
+* **What are the key characteristics of policyholders with low claim frequencies and high household incomes?**
+
+
+The analysis shows that policyholders with low claim frequencies and high household incomes are predominantly middle-aged, with the majority falling within the 31-60 age range. Specifically, age groups 31-40, 41-50, and 51-60 have approximately 1,500 to 1,600 individuals each. In terms of car use, 6,696 policyholders use their cars for private purposes compared to 1,625 for commercial use. Coverage zone analysis indicates a fairly even distribution, with each zone (Highly Rural, Highly Urban, Rural, Suburban, and Urban) having around 1,600 to 1,700 individuals. Gender distribution is almost equal, with 4,118 males and 4,203 females. The majority of these policyholders do not have children driving, with 5,897 having zero kids driving, and those with one child driving accounting for 1,496. Marital status reveals that single individuals constitute the largest group (3,426), followed by married individuals (2,763), divorced (1,418), and separated (714). Additionally, the average claim amount for these policyholders is $49,876, while their average household income is $224,227. This indicates that high household income correlates with lower claim frequencies and amounts.
+Regression analysis results indicate significant associations for high household income and low claim frequencies with specific car makes and colors. The car make "McLaren" has a positive and significant association (Estimate = 2.041432, p < 0.01). In terms of car color, "Goldenrod" (Estimate = -0.151166, p < 0.05) and "Yellow" (Estimate = -0.163325, p < 0.05) are significant predictors of high household income and low claim frequencies.
+
+
+```{r customersgem, echo=FALSE, message=FALSE, warning=FALSE}
+# Gender 
+insurance_data %>%
+  group_by(low_claim_high_income, gender) %>% 
+  filter(low_claim_high_income == "Yes") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=low_claim_high_income, y=Count, fill = gender)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distribution of Policyholders with Low Claim Frequency 
+       and High Household Income based on Gender",
+       x="Low Claim & High Income",
+       y="Value") +
+  theme_minimal()
+
+
+# Marital Status
+insurance_data %>%
+  group_by(low_claim_high_income, marital_status) %>% 
+  filter(low_claim_high_income == "Yes") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=low_claim_high_income, y=Count, fill = marital_status)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distribution of Policyholders with Low Claim Frequency and 
+       High Household Income based on Marital Status",
+       x="Low Claim & High Income",
+       y="Value") +
+  theme_minimal()
+
+# Car Use
+insurance_data %>%
+  group_by(low_claim_high_income, car_use) %>% 
+  filter(low_claim_high_income == "Yes") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=low_claim_high_income, y=Count, fill = car_use)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distribution of Policyholders with 
+       Low Claim Frequency and High Household Income based on Car Use",
+       x="Low Claim & High Income",
+       y="Value") +
+  theme_minimal()
+
+# Coverage Zone
+insurance_data %>%
+  group_by(low_claim_high_income, coverage_zone) %>% 
+  filter(low_claim_high_income == "Yes") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=low_claim_high_income, y=Count, fill = coverage_zone)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distribution of Policyholders with Low Claim 
+       Frequency and High Household Income based on Coverage Zone",
+       x="Low Claim & High Income",
+       y="Count") +
+  theme_minimal()
+
+# Kids Driving
+insurance_data %>%
+  group_by(low_claim_high_income, kids_driving_ch) %>% 
+  filter(low_claim_high_income == "Yes") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=low_claim_high_income, y=Count, fill = kids_driving_ch)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distribution of Policyholders with Low Claim 
+       Frequency and High Household Income based on Kids Driving",
+       x="Low Claim & High Income",
+       y="Value") +
+  theme_minimal()
+
+# Age Group
+insurance_data %>%
+  group_by(low_claim_high_income, age_group) %>% 
+  filter(low_claim_high_income == "Yes") %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x=low_claim_high_income, y=Count, fill = age_group)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Distribution of Policyholders with Low Claim 
+       Frequency and High Household Income based on Age Group",
+       x="Low Claim & High Income",
+       y="Value") +
+  theme_minimal()
+
+# Numeric Variables 
+insurance_data %>%
+  group_by(low_claim_high_income) %>% 
+  filter(low_claim_high_income == "Yes") %>%
+  summarise(avg_claim_amount = mean(claim_amt),
+            avg_household_income = mean(household_income)) %>%
+  pivot_longer(cols = -low_claim_high_income, names_to = "measures", values_to = "values") %>%
+  ggplot(aes(x=low_claim_high_income, y=values, fill = measures)) +
+  geom_col(position = 'dodge', width = 0.4) +
+  labs(title = "Average Claim Amount and Household 
+       Income for Policyholders with Low Claim 
+       Frequency and High Household Income",
+       x="Low Claim & High Income",
+       y="Value") +
+  facet_wrap(~ measures)+
+  theme_minimal()
+
+```
+
+
+
+
+* **How can we segment the customer base to identify high-value customers for targeted marketing campaigns?**
+
+
+Based on the analysis of policyholders with low claim frequency and high household income, we can segment the customer base as follows:
+
+* **Age Group**: Policyholders in the 31-60 age range are the most prevalent among those with low claim frequency and high household income, making them a prime target for marketing campaigns.
+* **Car Use**: Private car users dominate this segment, indicating that marketing efforts should focus on individuals who use their vehicles for personal rather than commercial purposes.
+* **Coverage Zone**: There is a relatively even distribution across all coverage zones, suggesting that high-value customers are spread across different geographical areas. Marketing campaigns should thus not be limited to specific zones.
+* **Gender**: There is an almost equal distribution between male and female policyholders, so marketing efforts should be inclusive and appeal to both genders equally.
+* **Kids Driving**: Policyholders with no children driving are the largest group in this segment. However, there is also a significant number of policyholders with one child driving, indicating that family-oriented marketing messages might also be effective.
+* **Marital Status**: Single and married policyholders make up the majority of this segment, suggesting that marketing campaigns could be tailored to both individual and family needs.
+* **Car Make**: Specific car makes such as McLaren show significant associations with low claim frequency and high household income. Targeting owners of these car makes could be beneficial.
+* **Car Color**: Certain car colours like Goldenrod and Yellow also show significant associations with this high-value segment. Marketing messages could highlight preferences for these car colours.
+
+
+
+#### **Demographic Analysis**
+
+* **How does the distribution of policyholders vary across different demographic factors (age, gender, marital status)?**
+
+
+The analysis reveals the demographic distribution of policyholders. Age-wise, the majority of policyholders are between 31-70 years old, with each group (31-40, 41-50, 51-60, and 61-70) having around 7,000 individuals. The 21-30 age group has 6,631 policyholders, while the 71-74 age group is the smallest, with 2,505 individuals. In terms of gender, the distribution is almost equal, with 18,806 female policyholders and 18,736 male policyholders. Regarding marital status, single individuals form the largest group with 15,525 policyholders, followed by married individuals (12,570), divorced (6,357), and separated (3,090) policyholders.
+
+
+```{r demodis, echo=FALSE, message=FALSE, warning=FALSE}
+# Age_Group 
+insurance_data %>% group_by(age_group) %>%
+  summarise(agegroup_distribution = n()) %>%
+  ggplot(aes(x=age_group, y=agegroup_distribution, fill=age_group)) +
+  geom_col(position = "dodge", width = 0.4) +
+  labs(title = "Distribution of policyholders based on age_group",
+       x= "Age_Group",
+       y= "Value") +
+  theme_minimal()
+# Gender
+insurance_data %>% group_by(gender) %>%
+  summarise(gender_distribution = n()) %>%
+  ggplot(aes(x=gender, y=gender_distribution, fill=gender)) +
+  geom_col(position = "dodge", width = 0.4) +
+  labs(title = "Distribution of policyholders based on gender",
+       x= "Gender",
+       y= "Value") +
+ theme_minimal()
+
+# Marital Status
+insurance_data %>% group_by(marital_status) %>%
+  summarise(ms_distribution = n()) %>%
+  ggplot(aes(x=marital_status, y=ms_distribution, fill=marital_status)) +
+  geom_col(position = "dodge", width = 0.4) +
+  labs(title = "Distribution of policyholders based on marital status",
+       x= "Marital Status",
+       y= "Value") +
+  theme_minimal()
+```
+
+
+
+
+* **Are there any noticeable trends in car usage and ownership among different demographic groups?**
+
+
+	The analysis shows that car usage varies across different age groups, genders, and marital statuses. Among age groups, individuals aged 21-30 and 31-40 primarily use their cars for private purposes, with counts of 5,334 and 5,629 respectively, while commercial usage is significantly lower for all age groups. Specifically, the age group 71-74 has the lowest number of commercial users (478) compared to private users (2,027).
+Gender analysis indicates that both females and males predominantly use their cars for private purposes, with counts of 15,071 and 14,989 respectively, compared to commercial usage, which is almost equal between genders (3,735 for females and 3,747 for males).
+In terms of marital status, single individuals have the highest private car usage (12,495), followed by married individuals (9,996). Commercial car usage is highest among single individuals (3,030) and lowest among separated individuals (630).
+
+
+```{r caruse, echo=FALSE, message=FALSE, warning=FALSE}
+# Age_Group
+insurance_data %>%
+  group_by(age_group, car_use) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x = car_use, y = Count, fill = age_group)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Car Usage based on Age Group",
+       x = "Car Use",
+       y = "Value") +
+  theme_minimal() +
+  coord_flip()
+
+# Gender
+  insurance_data %>%
+  group_by(gender, car_use) %>%
+  summarise(Count = n(), .groups = 'drop') %>%
+  ggplot(aes(x = car_use, y = Count, fill = gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Car Usage based on Gender",
+       x = "Car Use",
+       y = "Value") +
+  theme_minimal() +
+    coord_flip()
+  
+  # Marital Status
+  insurance_data %>%
+    group_by(marital_status, car_use) %>%
+    summarise(Count = n(), .groups = 'drop') %>%
+    ggplot(aes(x = car_use, y = Count, fill = marital_status)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(title = "Car Usage based on Marital Status",
+         x = "Car Use",
+         y = "Value") +
+    theme_minimal() +
+    coord_flip()
+```
+
+
+#### **Geographical Analysis**
+
+* **How do claim frequencies and amounts vary across different coverage zones?**
+
+
+The analysis shows that claim frequencies and average claim amounts are relatively consistent across different coverage zones. Highly Rural areas have an average claim frequency of 0.500 and an average claim amount of $49,998. Highly Urban areas exhibit an average claim frequency of 0.517 with an average claim amount of $49,861. Rural zones have a claim frequency of 0.506 and an average claim amount of $49,778. Suburban areas show a claim frequency of 0.520 with an average claim amount of $50,125. Urban areas have a claim frequency of 0.508 and an average claim amount of $50,378. This indicates that claim behavior is relatively uniform regardless of the coverage zone, with only slight variations in both claim frequency and average claim amounts.
+
+
+```{r geo, echo=FALSE, message=FALSE, warning=FALSE}
+insurance_data %>% group_by(coverage_zone) %>%
+    summarise(avg_claim_frequency = mean(claim_freq),
+              avg_claim_amount = mean(claim_amt)) %>%
+    pivot_longer(cols = c(avg_claim_frequency, avg_claim_amount), 
+                 names_to = "measures", values_to = "values") %>% 
+    ggplot(aes(x=coverage_zone,y=values, fill = coverage_zone)) +
+    geom_col(position = "dodge", width = 0.4) +
+    labs(title = "Average Claim Amount & Frequenecy for each Coverage Zone",
+         x="Coverage_Zone",
+         y="Values") +
+    facet_wrap(~ measures, scales = "free_y") +
+    theme_minimal()
+```
+
+
+
+
+* **Are there any regional trends or patterns that should be taken into consideration for marketing or risk assessment?**
+
+1. **Targeted Marketing**: Marketing strategies can be adjusted slightly for suburban areas, where claim frequencies are slightly higher. This could involve offering special incentives for safe driving or additional coverage options.
+2. **Balanced Premiums**: Given the uniformity in average claim amounts, premiums should be balanced across different regions, with slight adjustments to account for the higher claim frequencies in suburban zones.
+
+
+#### **Customer Behavior Insights**
+
+* **Are there any trends or patterns in the behavior of policyholders who have children driving?**
+
+
+The analysis shows that policyholders with children driving exhibit varying patterns based on car use, coverage zone, education level, and marital status. Policyholders using their cars for private purposes generally show slightly higher claim amounts and frequencies compared to those using them for commercial purposes. For instance, those with three children driving and private car use have an average claim amount of $52,443 and a claim frequency of 0.553, compared to $51,825 and 0.483 for commercial use. Coverage zone analysis reveals that highly urban areas have the highest claim frequency (0.725) for policyholders with three children driving, while suburban areas have the lowest (0.429). Education level also plays a role, with policyholders holding a PhD and three children driving having the highest average claim amount ($53,846) and claim frequency (0.559). Similarly, single policyholders with three children driving show the highest average claim amount ($52,979) and claim frequency (0.587). Overall, as the number of children driving increases, the average claim amount and frequency tend to increase, especially for those with higher education levels and in urban coverage zones. This suggests that demographic and behavioral factors significantly influence policyholder behavior, which can be crucial for tailoring insurance products and risk assessments.
+
+
+```{r cbi, echo=FALSE, message=FALSE, warning=FALSE}
+ # Marital Status
+ insurance_data %>% group_by(kids_driving_ch, marital_status) %>% 
+   filter(kids_driving_ch %in% c("One", "Two", "Three")) %>%
+   summarise(
+     avg_household_income = mean(household_income),
+     avg_claim_amount = mean(claim_amt),
+     avg_claim_frequecy = mean(claim_freq), .groups = 'drop') %>%
+   pivot_longer(cols = c(avg_household_income, avg_claim_amount, avg_claim_frequecy), 
+                names_to = "measures", 
+                values_to = "values") %>%
+   ggplot(aes(x=kids_driving_ch, y=values, fill = marital_status)) +
+   geom_col(position = "dodge", width = 0.4) +
+   labs(title = "Pattern in Behaviour of Poliyholders with Children Driving 
+        based on Marital Status",
+        x="Kids Driving",
+        y="Values") +
+   facet_wrap(~ measures, scales = "free_y") +
+   theme_minimal()
+  
+ # Education
+ insurance_data %>% group_by(kids_driving_ch, education) %>% 
+   filter(kids_driving_ch %in% c("One", "Two", "Three")) %>%
+   summarise(
+     avg_household_income = mean(household_income),
+     avg_claim_amount = mean(claim_amt),
+     avg_claim_frequecy = mean(claim_freq), .groups = 'drop') %>%
+   pivot_longer(cols = c(avg_household_income, avg_claim_amount, avg_claim_frequecy), 
+                names_to = "measures", 
+                values_to = "values") %>%
+   ggplot(aes(x=kids_driving_ch, y=values, fill = education)) +
+   geom_col(position = "dodge", width = 0.4) +
+   labs(title = "Pattern in Behaviour of Poliyholders with Children Driving 
+        based on Education level",
+        x="Kids Driving",
+        y="Values") +
+   facet_wrap(~ measures, scales = "free_y") +
+   theme_minimal()
+ 
+ # Coverage_Zone
+ insurance_data %>% group_by(kids_driving_ch, coverage_zone) %>% 
+   filter(kids_driving_ch %in% c("One", "Two", "Three")) %>%
+   summarise(
+     avg_household_income = mean(household_income),
+     avg_claim_amount = mean(claim_amt),
+     avg_claim_frequecy = mean(claim_freq), .groups = 'drop') %>%
+   pivot_longer(cols = c(avg_household_income, avg_claim_amount, avg_claim_frequecy), 
+                names_to = "measures", 
+                values_to = "values") %>%
+   ggplot(aes(x=kids_driving_ch, y=values, fill = coverage_zone)) +
+   geom_col(position = "dodge", width = 0.4) +
+   labs(title = "Pattern in Behaviour of Poliyholders with Children Driving 
+        based on Coverage Zone",
+        x="Kids Driving",
+        y="Values") +
+   facet_wrap(~ measures, scales = "free_y") +
+   theme_minimal()
+ 
+ # Car Use
+ insurance_data %>% group_by(kids_driving_ch, car_use) %>% 
+   filter(kids_driving_ch %in% c("One", "Two", "Three")) %>%
+   summarise(
+     avg_household_income = mean(household_income),
+     avg_claim_amount = mean(claim_amt),
+     avg_claim_frequecy = mean(claim_freq), .groups = 'drop') %>%
+   pivot_longer(cols = c(avg_household_income, avg_claim_amount, avg_claim_frequecy), 
+                names_to = "measures", 
+                values_to = "values") %>%
+   ggplot(aes(x=kids_driving_ch, y=values, fill = car_use)) +
+   geom_col(position = "dodge", width = 0.4) +
+   labs(title = "Pattern in Behaviour of Poliyholders with Children Driving 
+        based on Car use",
+        x="Kids Driving",
+        y="Values") +
+   facet_wrap(~ measures, scales = "free_y") +
+   theme_minimal()
+```
+
+
+
+
+* **How does the presence of children driving affect the frequency and number of claims?**
+
+The analysis shows that the presence of children driving affects claim amounts, claim frequencies, and household incomes for policyholders. Policyholders with one child driving have an average claim amount of $49,562, an average claim frequency of 0.510, and an average household income of $146,898. For those with three children driving, the average claim amount increases to $52,330, with a claim frequency of 0.540, and an average household income of $147,287. Policyholders with two children driving have an average claim amount of $49,804, a claim frequency of 0.490, and an average household income of $148,151. This data suggests that policyholders with more children driving tend to have slightly higher claim amounts and frequencies, while the household income remains relatively stable across different numbers of children driving
+
+```{r cd, echo=FALSE, message=FALSE, warning=FALSE}
+insurance_data %>% group_by(kids_driving_ch) %>% 
+   filter(kids_driving_ch %in% c("One", "Two", "Three")) %>%
+   summarise(
+     avg_claim_fre = mean(claim_freq),
+     avg_claim_amount = mean(claim_amt),
+     avg_household_income = mean(household_income)) %>%
+   pivot_longer(cols = -kids_driving_ch, names_to = "measures", 
+                values_to = "values") %>%
+   ggplot(aes(x=kids_driving_ch, y=values, fill = kids_driving_ch)) +
+   geom_col(position = "dodge", width = 0.4) +
+   labs(title = "Presence of Children Driving effect on Claim Amount, 
+        Frequency and Household Income",
+        x="Kids Driving",
+        y="Values") +
+   facet_wrap(~ measures, scales = "free_y") +
+   theme_minimal()
+```
+
+
+
+## Conclusion 
+
+Based on the comprehensive evaluation of Splendor Analytics Insurance, this project has revealed critical insights into policyholder demographics, claim behaviors, and premium dynamics. The analysis underscores the importance of data-driven decision-making in optimizing business strategies and enhancing marketing strategies. Key findings include the consistent nature of claim behaviors across demographic groups and coverage zones, the minimal impact of vehicle characteristics on claim frequencies and amounts, and significant associations between specific demographic factors (such as age, marital status, and household income) and insurance risk profiles.
+Moving forward, Splendor Analytics Insurance can leverage these insights to refine its premium pricing models, target high-value customer segments more effectively, and implement tailored marketing strategies. By continuing to prioritize data integrity and analytics, the company can sustainably enhance operational efficiency and maintain a competitive advantage in the auto insurance market.
+

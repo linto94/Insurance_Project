@@ -1,0 +1,64 @@
+---
+title: "Key Findings & Recommendations"
+author: "St.John"
+date: "2024-06-28"
+output: 
+  ioslides_presentation: 
+    smaller: true
+    highlight: espresso
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+## Key Findings and Insights from analysis includes:
+
+- Claim amounts are consistent across age groups, averaging around $49,000 to $50,500, with slight variations for younger and older drivers.
+- Vehicle characteristics like make, model, year, and color show negligible correlation with claim frequencies and amounts.
+- Certain car models (e.g., car_model5000S, car_modelA6) are significantly associated with higher-risk policyholders.
+- Policyholders using their cars for private purposes are more likely to make frequent claims compared to commercial users.
+- High-risk policyholders pay significantly higher average premiums ($7,562) compared to low-risk counterparts ($3,774).
+
+## Key Findings part 2
+
+- Policyholders with no children driving and single marital status are more frequent claimants.
+- Specific car makes (e.g., Cadillac, Geo) are associated with higher claim frequencies.
+- Age and household income correlate with lower claim frequencies and amounts, especially in the 31-60 age range and higher income brackets.
+- Coverage zones (rural, urban) show minimal impact on claim behaviors, with suburban areas exhibiting slightly higher frequencies.
+- Demographic distributions reveal an almost equal split between genders and a predominant representation of single and married individuals among policyholders.
+
+## Recommendation For Adjustment to Premium Pricing Model
+
+- **Competitive Premiums for Low-Risk Policyholders**: Maintain competitive premiums to retain and attract low-risk customers, enhancing profitability through fewer claim costs.
+- **Differentiated High-Risk Premiums**: Further differentiate premiums within the high-risk category based on detailed risk factors like driving behavior and specific vehicle models to better reflect claim likelihood.
+- **Incorporate Predictive Factors**: Integrate additional predictive factors, such as specific car makes or historical claim frequency, to refine premium strategies and align them with risk profiles.
+
+## Recommendation For Adjustment to Premium Pricing Model Part 2
+
+- **Effective Customer Segmentation**: Utilize data-driven insights to segment customers effectively, ensuring fair and justified premium adjustments tailored to different risk profiles.
+- **Regular Review and Adjustment**: Periodically review and adjust premiums based on updated risk assessments and emerging trends to maintain profitability and customer satisfaction.
+
+## Recommendation For Segmentation for Targeted Marketing of High Value Customers
+
+- **Age Group Focus**: Target policyholders aged 31-60, who exhibit low claim frequency and high household income, as a prime demographic for focused marketing campaigns.
+- **Car Use Preference**: Focus marketing efforts on private car users, highlighting personalized benefits for personal vehicle use.
+- **Geographical Spread**: Recognize a widespread distribution across coverage zones, ensuring inclusive marketing strategies across diverse geographical areas.
+
+## Recommendation For Segmentation for Targeted Marketing of High Value Customers Part 2
+
+- **Gender Neutrality**: Appeal to both male and female policyholders equally in marketing campaigns to maximize reach and engagement.
+- **Family Dynamics**: Tailor messaging to single and married policyholders, recognizing their majority representation among high-value segments.
+- **Vehicle Preferences**: Highlight specific car makes like McLaren and preferred colors such as Goldenrod and Yellow, aligning marketing messages with customer preferences.
+
+## Recommendation For Regional Trends and Marketing Adjustments
+
+- **Suburban Targeting**: Adjust marketing strategies for suburban areas with slightly higher claim frequencies, offering tailored incentives for safe driving and enhanced coverage options.
+- **Balanced Premium Approach**: Ensure premiums are balanced across different regions, with slight adjustments to account for regional claim frequency variations while maintaining competitive pricing.
+
+
+## Thank you for Reading
+
+
